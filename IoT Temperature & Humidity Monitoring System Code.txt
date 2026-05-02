@@ -1,0 +1,89 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+#include <WiFi.h>
+#include <ThingSpeak.h>
+
+// ✅ WiFi credentials (Wokwi uses default simulation WiFi)
+const char* ssid = "Wokwi-GUEST";
+const char* password = "";
+
+// ✅ ThingSpeak Configuration
+unsigned long channelID = 2906755;
+const char* writeAPIKey = "TMRQUH0SA69EXLEA";
+
+// ✅ DHT22 Sensor setup
+#define DHTPIN 4
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+// ✅ LCD setup (I2C address 0x27, 16 columns, 2 rows)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+WiFiClient client;
+
+void setup() {
+  Serial.begin(115200);
+
+  // ✅ LCD initialization fix
+  lcd.init();            // ⚠️ Correct method instead of lcd.begin()
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting WiFi");
+
+  // ✅ WiFi connection
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi Connected!");
+  delay(1000);
+
+  ThingSpeak.begin(client);  // ✅ Start ThingSpeak
+  dht.begin();               // ✅ Start DHT Sensor
+}
+
+void loop() {
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+
+  if (isnan(temp) || isnan(hum)) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Sensor Error!");
+    delay(2000);
+    return;
+  }
+
+  // ✅ Display Temperature and Humidity on LCD
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("T: ");
+  lcd.print(temp);
+  lcd.print("C");
+
+  lcd.setCursor(0, 1);
+  lcd.print("H: ");
+  lcd.print(hum);
+  lcd.print("%");
+
+  // ✅ Send to ThingSpeak
+  ThingSpeak.setField(1, temp);
+  ThingSpeak.setField(2, hum);
+  ThingSpeak.setField(3, temp > 27 ? 1 : 0);  // Temp Lamp
+  ThingSpeak.setField(4, hum > 70 ? 1 : 0);   // Hum Lamp
+
+  int code = ThingSpeak.writeFields(channelID, writeAPIKey);
+  if (code == 200) {
+    Serial.println("Data sent!");
+  } else {
+    Serial.print("Send error: ");
+    Serial.println(code);
+  }
+
+  delay(15000); // ✅ ThingSpeak min delay
+}
